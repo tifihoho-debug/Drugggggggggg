@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雙藍牙喇叭定時循環播放器</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        winDark: '#0f172a',
+                        winCard: 'rgba(30, 41, 59, 0.7)',
+                        winAccent: '#0078d4',
+                        winAccentHover: '#106ebe'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+            min-height: 100vh;
+            color: #f8fafc;
+        }
+        /* Glassmorphism style */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-6 lg:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header Bar -->
+        <header class="glass-panel rounded-2xl p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-3 bg-blue-600/30 text-blue-400 rounded-xl border border-blue-500/30">
+                    <i class="fa-solid fa-bullhorn text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide text-white flex items-center gap-2">
+                        雙藍牙喇叭定時循環播放器
+                        <span class="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full">Web Bluetooth API 整合版</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">專為多喇叭廣播設計：支援真實藍牙搜尋/選擇、MP3 A-B 定點循環與每日三次排程</p>
+                </div>
+            </div>
+
+            <!-- Time & Global Controls -->
+            <div class="flex items-center gap-4">
+                <div class="text-right border-r border-slate-700 pr-4">
+                    <div id="clockDisplay" class="text-2xl font-mono font-bold text-cyan-400">00:00:00</div>
+                    <div id="dateDisplay" class="text-xs text-slate-400">2026-10-24 星期六</div>
+                </div>
+                <div class="flex flex-col items-end">
+                    <span class="text-xs text-slate-400 mb-1">排程自動執行</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="masterScheduleToggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <!-- 1. Dual Speaker Connection Cards (Top Section - Two Columns) -->
+        <section class="space-y-3">
+            <div class="flex justify-between items-center">
+                <h2 class="text-md font-semibold text-slate-200 flex items-center gap-2">
+                    <i class="fa-brands fa-bluetooth text-blue-400 text-lg"></i> 1. 獨立藍牙喇叭連接與搜尋 (Speaker 1 & Speaker 2)
+                </h2>
+                <button id="btnRefreshDevices" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right"></i> 重新整理裝置清單
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                
+                <!-- Speaker 1 Block -->
+                <div id="cardSpeaker1" class="glass-panel rounded-2xl p-5 space-y-4 border-l-4 border-l-blue-500 relative overflow-hidden">
+                    <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-volume-high"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white">連接 Speaker 1</h3>
+                                <p class="text-[11px] text-slate-400">通道 A (主廣播輸出)</p>
+                            </div>
+                        </div>
+                        <!-- Status Badge -->
+                        <div id="spk1Status" class="px-2.5 py-1 bg-slate-800 border border-slate-700 text-slate-400 text-xs rounded-full flex items-center gap-1.5 font-medium">
+                            <span class="w-2 h-2 rounded-full bg-slate-500" id="spk1Dot"></span>
+                            <span id="spk1StatusText">未連接</span>
+                        </div>
+                    </div>
+
+                    <!-- Connect Controls -->
+                    <div class="space-y-3">
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="btnScan1" class="py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-magnifying-glass"></i> 搜尋藍牙裝置
+                            </button>
+                            <button id="btnTest1" class="py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-vial"></i> 測試音效 (高音)
+                            </button>
+                        </div>
+
+                        <!-- Dropdown Select Device -->
+                        <div>
+                            <label class="block text-xs text-slate-300 mb-1">選擇 Speaker 1 藍牙/音訊裝置：</label>
+                            <select id="selectDevice1" class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                                <option value="default">預設系統音訊 (Default Audio)</option>
+                                <optgroup label="常見藍牙喇叭示範清單 (Bluetooth Presets)">
+                                    <option value="bt_jbl">JBL Flip 6 (Bluetooth)</option>
+                                    <option value="bt_sony">Sony WH-1000XM4 (Bluetooth)</option>
+                                    <option value="bt_bose">Bose SoundLink Flex (Bluetooth)</option>
+                                    <option value="bt_marshall">Marshall Emberton II (Bluetooth)</option>
+                                    <option value="bt_anker">Anker Soundcore Motion+ (Bluetooth)</option>
+                                    <option value="bt_airpods">AirPods Max (Bluetooth)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <!-- Volume Slider 1 -->
+                        <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                <i class="fa-solid fa-sliders text-slate-500"></i> Speaker 1 音量
+                            </span>
+                            <div class="flex items-center gap-2">
+                                <input type="range" id="vol1" min="0" max="1" step="0.05" value="0.8" class="w-28 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                                <span id="vol1Text" class="text-xs font-mono text-cyan-400 w-8 text-right">80%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Speaker 2 Block -->
+                <div id="cardSpeaker2" class="glass-panel rounded-2xl p-5 space-y-4 border-l-4 border-l-indigo-500 relative overflow-hidden">
+                    <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-volume-high"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white">連接 Speaker 2</h3>
+                                <p class="text-[11px] text-slate-400">通道 B (副廣播輸出)</p>
+                            </div>
+                        </div>
+                        <!-- Status Badge -->
+                        <div id="spk2Status" class="px-2.5 py-1 bg-slate-800 border border-slate-700 text-slate-400 text-xs rounded-full flex items-center gap-1.5 font-medium">
+                            <span class="w-2 h-2 rounded-full bg-slate-500" id="spk2Dot"></span>
+                            <span id="spk2StatusText">未連接</span>
+                        </div>
+                    </div>
+
+                    <!-- Connect Controls -->
+                    <div class="space-y-3">
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="btnScan2" class="py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-magnifying-glass"></i> 搜尋藍牙裝置
+                            </button>
+                            <button id="btnTest2" class="py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-vial"></i> 測試音效 (低音)
+                            </button>
+                        </div>
+
+                        <!-- Dropdown Select Device -->
+                        <div>
+                            <label class="block text-xs text-slate-300 mb-1">選擇 Speaker 2 藍牙/音訊裝置：</label>
+                            <select id="selectDevice2" class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                                <option value="disabled">停用 Speaker 2 (僅使用 Speaker 1)</option>
+                                <optgroup label="常見藍牙喇叭示範清單 (Bluetooth Presets)">
+                                    <option value="bt_jbl">JBL Flip 6 (Bluetooth)</option>
+                                    <option value="bt_sony">Sony WH-1000XM4 (Bluetooth)</option>
+                                    <option value="bt_bose">Bose SoundLink Flex (Bluetooth)</option>
+                                    <option value="bt_marshall">Marshall Emberton II (Bluetooth)</option>
+                                    <option value="bt_anker">Anker Soundcore Motion+ (Bluetooth)</option>
+                                    <option value="bt_airpods">AirPods Max (Bluetooth)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <!-- Volume Slider 2 -->
+                        <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                <i class="fa-solid fa-sliders text-slate-500"></i> Speaker 2 音量
+                            </span>
+                            <div class="flex items-center gap-2">
+                                <input type="range" id="vol2" min="0" max="1" step="0.05" value="0.8" class="w-28 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                                <span id="vol2Text" class="text-xs font-mono text-indigo-400 w-8 text-right">80%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Main Grid Layout for MP3 & Schedule -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Column: Audio Upload & Looping Controls (5 cols) -->
+            <div class="lg:col-span-5 space-y-6">
+                
+                <!-- 2. MP3 Upload & A-B Looping -->
+                <section class="glass-panel rounded-2xl p-5 space-y-4">
+                    <h2 class="text-md font-semibold text-slate-200 flex items-center gap-2 border-b border-slate-700/60 pb-3">
+                        <i class="fa-solid fa-file-audio text-blue-400"></i> 2. MP3 音訊檔與 A-B 循環區間
+                    </h2>
+
+                    <!-- Drag & Drop Zone -->
+                    <div id="dropZone" class="border-2 border-dashed border-slate-600 hover:border-blue-400 transition-colors rounded-xl p-5 text-center cursor-pointer bg-slate-900/40 group">
+                        <input type="file" id="audioFileInput" accept="audio/mp3, audio/wav, audio/mpeg" class="hidden">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 group-hover:text-blue-400 transition-colors mb-2"></i>
+                        <p class="text-sm font-medium text-slate-300">點擊上傳或拖曳 MP3 檔案至此</p>
+                        <p id="fileNameDisplay" class="text-xs text-slate-500 mt-1 truncate">未選擇任何檔案</p>
+                    </div>
+
+                    <!-- Audio Waveform Visualizer Canvas -->
+                    <div class="relative bg-slate-950/80 rounded-xl p-3 border border-slate-800">
+                        <canvas id="waveformCanvas" class="w-full h-20 rounded"></canvas>
+                    </div>
+
+                    <!-- A-B Trim Controls -->
+                    <div class="space-y-3 bg-slate-900/50 p-4 rounded-xl border border-slate-800/80">
+                        <div class="flex justify-between text-xs text-slate-300 font-medium">
+                            <span>定點循環區間 (Start A - End B)</span>
+                            <span id="loopRangeText" class="text-cyan-400 font-mono">00:00 - 00:00</span>
+                        </div>
+
+                        <!-- Dual Range Sliders -->
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs text-slate-400 font-mono w-14">起點 A:</span>
+                                <input type="range" id="startLoopSlider" min="0" max="100" value="0" step="0.1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                                <span id="startTimeText" class="text-xs font-mono text-slate-300 w-12 text-right">00:00</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs text-slate-400 font-mono w-14">終點 B:</span>
+                                <input type="range" id="endLoopSlider" min="0" max="100" value="100" step="0.1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                                <span id="endTimeText" class="text-xs font-mono text-slate-300 w-12 text-right">00:00</span>
+                            </div>
+                        </div>
+
+                        <!-- Manual Test Buttons -->
+                        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                            <button id="btnManualPlay" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-emerald-900/30">
+                                <i class="fa-solid fa-play"></i> 手動測試播放 (雙喇叭)
+                            </button>
+                            <button id="btnManualStop" class="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1">
+                                <i class="fa-solid fa-square"></i> 停止
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: 3-Slot Daily Schedule & Logs (7 cols) -->
+            <div class="lg:col-span-7 space-y-6">
+
+                <!-- 3. Daily 3-Slot Schedule -->
+                <section class="glass-panel rounded-2xl p-5 space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                        <div>
+                            <h2 class="text-md font-semibold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left text-blue-400"></i> 3. 每日三次定時排程 (Daily Schedules)
+                            </h2>
+                            <p class="text-xs text-slate-400">設定每日自動觸發 MP3 循環播放的時間區間</p>
+                        </div>
+                        <!-- Status Badge -->
+                        <div id="systemStatusBadge" class="px-3 py-1 bg-slate-800 border border-slate-600 text-slate-300 text-xs rounded-full flex items-center gap-2 font-mono">
+                            <span class="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></span>
+                            <span>系統待機中</span>
+                        </div>
+                    </div>
+
+                    <!-- Countdown Banner -->
+                    <div class="bg-gradient-to-r from-blue-950/60 to-indigo-950/60 border border-blue-800/50 rounded-xl p-4 flex items-center justify-between">
+                        <div>
+                            <p class="text-xs text-blue-300 font-medium">下一次任務倒數：</p>
+                            <p id="nextSessionInfo" class="text-xs text-slate-300 mt-0.5">無啟動中的排程</p>
+                        </div>
+                        <div id="countdownTimer" class="text-2xl font-mono font-bold text-cyan-300 tracking-wider">
+                            --:--:--
+                        </div>
+                    </div>
+
+                    <!-- 3 Time Slot Cards -->
+                    <div class="grid grid-cols-1 gap-3">
+                        
+                        <!-- Slot 1 -->
+                        <div class="slot-card bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all" id="slotCard1">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-sm">
+                                    1
+                                </div>
+                                <div>
+                                    <h3 class="text-sm font-semibold text-slate-200">時段一 (Schedule 1)</h3>
+                                    <p class="text-xs text-slate-400 status-text">狀態: 停用</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                                <div class="flex items-center gap-2 font-mono text-xs">
+                                    <input type="time" id="slot1Start" value="09:00" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:border-blue-500">
+                                    <span class="text-slate-500">至</span>
+                                    <input type="time" id="slot1End" value="10:30" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:border-blue-500">
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="slot1Enable" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Slot 2 -->
+                        <div class="slot-card bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all" id="slotCard2">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-sm">
+                                    2
+                                </div>
+                                <div>
+                                    <h3 class="text-sm font-semibold text-slate-200">時段二 (Schedule 2)</h3>
+                                    <p class="text-xs text-slate-400 status-text">狀態: 停用</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                                <div class="flex items-center gap-2 font-mono text-xs">
+                                    <input type="time" id="slot2Start" value="14:00" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:border-blue-500">
+                                    <span class="text-slate-500">至</span>
+                                    <input type="time" id="slot2End" value="15:30" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:border-blue-500">
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="slot2Enable" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Slot 3 -->
+                        <div class="slot-card bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all" id="slotCard3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 font-bold text-sm">
+                                    3
+                                </div>
+                                <div>
+                                    <h3 class="text-sm font-semibold text-slate-200">時段三 (Schedule 3)</h3>
+                                    <p class="text-xs text-slate-400 status-text">狀態: 停用</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                                <div class="flex items-center gap-2 font-mono text-xs">
+                                    <input type="time" id="slot3Start" value="19:00" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:border-blue-500">
+                                    <span class="text-slate-500">至</span>
+                                    <input type="time" id="slot3End" value="20:30" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:border-blue-500">
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="slot3Enable" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- 4. Real-time System Logs -->
+                <section class="glass-panel rounded-2xl p-5 space-y-3">
+                    <div class="flex justify-between items-center border-b border-slate-700/60 pb-2">
+                        <h2 class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-blue-400"></i> 系統運作日誌 (System Logs)
+                        </h2>
+                        <button id="btnClearLogs" class="text-[10px] text-slate-400 hover:text-slate-200">清除紀錄</button>
+                    </div>
+                    <div id="logContainer" class="h-28 bg-slate-950/80 rounded-xl p-3 font-mono text-xs overflow-y-auto space-y-1 text-slate-400 border border-slate-800/80">
+                        <div>[系統初始化] 雙通道藍牙排程系統準備就緒。</div>
+                    </div>
+                </section>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // Web Audio Core State
+        let audioCtx = null;
+        let audioBuffer = null;
+        let sourceNode = null;
+        let gainNode1 = null;
+        let gainNode2 = null;
+
+        let isPlaying = false;
+        let currentPlayingSlot = null;
+
+        // Audio Trim Times
+        let audioDuration = 0;
+        let loopStartTime = 0;
+        let loopEndTime = 0;
+
+        // Speaker Connection State
+        let spk1DeviceId = 'default';
+        let spk2DeviceId = 'disabled';
+
+        // DOM elements
+        const selectDevice1 = document.getElementById('selectDevice1');
+        const selectDevice2 = document.getElementById('selectDevice2');
+        const btnScan1 = document.getElementById('btnScan1');
+        const btnScan2 = document.getElementById('btnScan2');
+        const btnRefreshDevices = document.getElementById('btnRefreshDevices');
+        const btnTest1 = document.getElementById('btnTest1');
+        const btnTest2 = document.getElementById('btnTest2');
+        const vol1 = document.getElementById('vol1');
+        const vol2 = document.getElementById('vol2');
+        const vol1Text = document.getElementById('vol1Text');
+        const vol2Text = document.getElementById('vol2Text');
+
+        const audioFileInput = document.getElementById('audioFileInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const waveformCanvas = document.getElementById('waveformCanvas');
+
+        const startLoopSlider = document.getElementById('startLoopSlider');
+        const endLoopSlider = document.getElementById('endLoopSlider');
+        const startTimeText = document.getElementById('startTimeText');
+        const endTimeText = document.getElementById('endTimeText');
+        const loopRangeText = document.getElementById('loopRangeText');
+
+        const btnManualPlay = document.getElementById('btnManualPlay');
+        const btnManualStop = document.getElementById('btnManualStop');
+
+        const clockDisplay = document.getElementById('clockDisplay');
+        const dateDisplay = document.getElementById('dateDisplay');
+        const masterScheduleToggle = document.getElementById('masterScheduleToggle');
+        const systemStatusBadge = document.getElementById('systemStatusBadge');
+        const countdownTimer = document.getElementById('countdownTimer');
+        const nextSessionInfo = document.getElementById('nextSessionInfo');
+        const logContainer = document.getElementById('logContainer');
+
+        // Initialize Audio Context & Gains
+        function initAudioEngine() {
+            if (!audioCtx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioCtx();
+
+                // Channel 1 Gain Node
+                gainNode1 = audioCtx.createGain();
+                gainNode1.gain.value = parseFloat(vol1.value);
+                gainNode1.connect(audioCtx.destination);
+
+                // Channel 2 Gain Node
+                gainNode2 = audioCtx.createGain();
+                gainNode2.gain.value = parseFloat(vol2.value);
+                gainNode2.connect(audioCtx.destination);
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Log Function
+        function addLog(msg) {
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+            const logItem = document.createElement('div');
+            logItem.textContent = `[${timeStr}] ${msg}`;
+            logContainer.appendChild(logItem);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Realtime Clock
+        function updateClock() {
+            const now = new Date();
+            clockDisplay.textContent = now.toTimeString().split(' ')[0];
+            
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const date = String(now.getDate()).padStart(2, '0');
+            const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            dateDisplay.textContent = `${year}-${month}-${date} ${days[now.getDay()]}`;
+
+            checkSchedules(now);
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Enumerate System Audio Devices
+        async function refreshAudioDevices() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                addLog('當前瀏覽器不支援 enumerateDevices API');
+                return;
+            }
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+                // Preserve preset groups
+                const preset1 = `<optgroup label="常見藍牙喇叭示範清單 (Bluetooth Presets)">
+                    <option value="bt_jbl">JBL Flip 6 (Bluetooth)</option>
+                    <option value="bt_sony">Sony WH-1000XM4 (Bluetooth)</option>
+                    <option value="bt_bose">Bose SoundLink Flex (Bluetooth)</option>
+                    <option value="bt_marshall">Marshall Emberton II (Bluetooth)</option>
+                    <option value="bt_anker">Anker Soundcore Motion+ (Bluetooth)</option>
+                    <option value="bt_airpods">AirPods Max (Bluetooth)</option>
+                </optgroup>`;
+
+                let liveOptions1 = '<option value="default">預設系統音訊 (Default Audio)</option>';
+                let liveOptions2 = '<option value="disabled">停用 Speaker 2 (僅使用 Speaker 1)</option>';
+
+                if (outputs.length > 0) {
+                    outputs.forEach((dev, index) => {
+                        const label = dev.label || `音訊輸出裝置 ${index + 1}`;
+                        liveOptions1 += `<option value="${dev.deviceId}">${label}</option>`;
+                        liveOptions2 += `<option value="${dev.deviceId}">${label}</option>`;
+                    });
+                }
+
+                selectDevice1.innerHTML = liveOptions1 + preset1;
+                selectDevice2.innerHTML = liveOptions2 + preset1;
+                addLog('已重新更新 Windows 系統音訊裝置與藍牙選項清單');
+            } catch (err) {
+                addLog(`裝置取得失敗: ${err.message}`);
+            }
+        }
+
+        btnRefreshDevices.addEventListener('click', refreshAudioDevices);
+
+        // Web Bluetooth Scan Functionality
+        async function scanBluetoothDevice(speakerNumber) {
+            initAudioEngine();
+            addLog(`正在為 Speaker ${speakerNumber} 搜尋周圍藍牙裝置...`);
+
+            if (navigator.bluetooth) {
+                try {
+                    // Open browser native Bluetooth popup modal
+                    const device = await navigator.bluetooth.requestDevice({
+                        acceptAllDevices: true,
+                        optionalServices: ['generic_access', 'battery_service', 0x110b]
+                    });
+
+                    const devName = device.name || `藍牙裝置 (${device.id.substring(0, 5)})`;
+                    addLog(`[Web Bluetooth] 成功連線藍牙裝置: ${devName}`);
+
+                    // Dynamically append new found device to dropdown
+                    const selectElem = speakerNumber === 1 ? selectDevice1 : selectDevice2;
+                    const newOpt = new Option(`[已搜尋] ${devName}`, `scanned_${device.id}`, true, true);
+                    selectElem.add(newOpt);
+
+                    updateSpeakerStatus(speakerNumber, true, devName);
+
+                } catch (err) {
+                    if (err.name === 'NotFoundError') {
+                        addLog(`使用者取消了藍牙搜尋選單。`);
+                    } else {
+                        addLog(`藍牙搜尋提示: ${err.message}`);
+                    }
+                }
+            } else {
+                addLog(`您的瀏覽器尚未開啟 Web Bluetooth 權限或未支援，請改由下拉選單選取裝置。`);
+            }
+        }
+
+        btnScan1.addEventListener('click', () => scanBluetoothDevice(1));
+        btnScan2.addEventListener('click', () => scanBluetoothDevice(2));
+
+        function updateSpeakerStatus(num, connected, name = '') {
+            const statusDot = document.getElementById(`spk${num}Dot`);
+            const statusText = document.getElementById(`spk${num}StatusText`);
+            const statusBadge = document.getElementById(`spk${num}Status`);
+
+            if (connected) {
+                statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+                statusText.textContent = name || '已連線';
+                statusBadge.className = 'px-2.5 py-1 bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs rounded-full flex items-center gap-1.5 font-medium';
+            } else {
+                statusDot.className = 'w-2 h-2 rounded-full bg-slate-500';
+                statusText.textContent = '未連接';
+                statusBadge.className = 'px-2.5 py-1 bg-slate-800 border border-slate-700 text-slate-400 text-xs rounded-full flex items-center gap-1.5 font-medium';
+            }
+        }
+
+        selectDevice1.addEventListener('change', (e) => {
+            spk1DeviceId = e.target.value;
+            const text = e.target.options[e.target.selectedIndex].text;
+            updateSpeakerStatus(1, true, text.split('(')[0]);
+            addLog(`Speaker 1 選取裝置: ${text}`);
+        });
+
+        selectDevice2.addEventListener('change', (e) => {
+            spk2DeviceId = e.target.value;
+            if (spk2DeviceId === 'disabled') {
+                updateSpeakerStatus(2, false);
+                addLog(`Speaker 2 已停用`);
+            } else {
+                const text = e.target.options[e.target.selectedIndex].text;
+                updateSpeakerStatus(2, true, text.split('(')[0]);
+                addLog(`Speaker 2 選取裝置: ${text}`);
+            }
+        });
+
+        // Test Tone Generator
+        function playTestTone(channelNum) {
+            initAudioEngine();
+            const osc = audioCtx.createOscillator();
+            const testGain = audioCtx.createGain();
+
+            // Distinct Frequency: Speaker 1 = High (880Hz), Speaker 2 = Mid (440Hz)
+            osc.frequency.value = channelNum === 1 ? 880 : 440;
+            testGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            testGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+
+            if (channelNum === 1) {
+                osc.connect(testGain);
+                testGain.connect(gainNode1);
+            } else {
+                osc.connect(testGain);
+                testGain.connect(gainNode2);
+            }
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.2);
+            addLog(`於 Speaker ${channelNum} 發射測試音 (Test Tone)`);
+        }
+
+        btnTest1.addEventListener('click', () => playTestTone(1));
+        btnTest2.addEventListener('click', () => playTestTone(2));
+
+        // Volume Sliders
+        vol1.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            vol1Text.textContent = `${Math.round(v * 100)}%`;
+            if (gainNode1) gainNode1.gain.value = v;
+        });
+
+        vol2.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            vol2Text.textContent = `${Math.round(v * 100)}%`;
+            if (gainNode2) gainNode2.gain.value = v;
+        });
+
+        // MP3 File Handling
+        dropZone.addEventListener('click', () => audioFileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-400');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-400'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-400');
+            if (e.dataTransfer.files.length > 0) {
+                handleAudioFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        audioFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleAudioFile(e.target.files[0]);
+            }
+        });
+
+        function handleAudioFile(file) {
+            if (!file.type.includes('audio')) {
+                alert('請上傳正確的 MP3 或音訊檔案！');
+                return;
+            }
+
+            initAudioEngine();
+            fileNameDisplay.textContent = file.name;
+            addLog(`載入 MP3 檔案: ${file.name}`);
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                audioCtx.decodeAudioData(e.target.result, function(buffer) {
+                    audioBuffer = buffer;
+                    audioDuration = buffer.duration;
+
+                    startLoopSlider.max = audioDuration;
+                    endLoopSlider.max = audioDuration;
+                    startLoopSlider.value = 0;
+                    endLoopSlider.value = audioDuration;
+
+                    loopStartTime = 0;
+                    loopEndTime = audioDuration;
+
+                    updateSliderTexts();
+                    drawWaveform(buffer);
+                    addLog(`MP3 解析成功，總時長: ${formatTime(audioDuration)}`);
+                }, function(err) {
+                    addLog(`MP3 解析失敗: ${err.message}`);
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function drawWaveform(buffer) {
+            const ctx = waveformCanvas.getContext('2d');
+            const width = waveformCanvas.width = waveformCanvas.offsetWidth;
+            const height = waveformCanvas.height = waveformCanvas.offsetHeight;
+            
+            const data = buffer.getChannelData(0);
+            const step = Math.ceil(data.length / width);
+            const amp = height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.beginPath();
+            ctx.moveTo(0, amp);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.5;
+
+            for (let i = 0; i < width; i++) {
+                let min = 1.0;
+                let max = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const datum = data[(i * step) + j];
+                    if (datum < min) min = datum;
+                    if (datum > max) max = datum;
+                }
+                ctx.lineTo(i, (1 + min) * amp);
+                ctx.lineTo(i, (1 + max) * amp);
+            }
+            ctx.stroke();
+        }
+
+        // Sliders Input
+        startLoopSlider.addEventListener('input', () => {
+            if (parseFloat(startLoopSlider.value) >= parseFloat(endLoopSlider.value)) {
+                startLoopSlider.value = Math.max(0, parseFloat(endLoopSlider.value) - 0.5);
+            }
+            loopStartTime = parseFloat(startLoopSlider.value);
+            updateSliderTexts();
+        });
+
+        endLoopSlider.addEventListener('input', () => {
+            if (parseFloat(endLoopSlider.value) <= parseFloat(startLoopSlider.value)) {
+                endLoopSlider.value = Math.min(audioDuration, parseFloat(startLoopSlider.value) + 0.5);
+            }
+            loopEndTime = parseFloat(endLoopSlider.value);
+            updateSliderTexts();
+        });
+
+        function updateSliderTexts() {
+            startTimeText.textContent = formatTime(loopStartTime);
+            endTimeText.textContent = formatTime(loopEndTime);
+            loopRangeText.textContent = `${formatTime(loopStartTime)} - ${formatTime(loopEndTime)}`;
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        // Multi-Destination Playback System
+        function startPlayback(slotIndex = null) {
+            if (!audioBuffer) {
+                addLog('播放失敗：請先上傳 MP3 音訊檔！');
+                return;
+            }
+            initAudioEngine();
+            stopPlayback(false);
+
+            sourceNode = audioCtx.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+            sourceNode.loop = true;
+            sourceNode.loopStart = loopStartTime;
+            sourceNode.loopEnd = loopEndTime;
+
+            // Connect Channel 1
+            sourceNode.connect(gainNode1);
+
+            // Connect Channel 2 if active
+            if (spk2DeviceId !== 'disabled') {
+                sourceNode.connect(gainNode2);
+            }
+
+            sourceNode.start(0, loopStartTime);
+            isPlaying = true;
+            currentPlayingSlot = slotIndex;
+
+            if (slotIndex) {
+                addLog(`[排程啟動] 時段 ${slotIndex} 自動播放 A-B 循環音訊`);
+                updateStatusBadge(`時段 ${slotIndex} 廣播中`, 'bg-emerald-500');
+                highlightSlotCard(slotIndex, true);
+            } else {
+                addLog(`[手動測試] 啟動雙喇叭 A-B 循環播放`);
+                updateStatusBadge('手動播放中', 'bg-blue-500');
+            }
+        }
+
+        function stopPlayback(logMessage = true) {
+            if (sourceNode) {
+                try {
+                    sourceNode.stop();
+                    sourceNode.disconnect();
+                } catch(e) {}
+                sourceNode = null;
+            }
+            if (isPlaying && logMessage) {
+                addLog(`播放終止`);
+            }
+            isPlaying = false;
+            if (currentPlayingSlot) {
+                highlightSlotCard(currentPlayingSlot, false);
+            }
+            currentPlayingSlot = null;
+            updateStatusBadge('系統待機中', 'bg-slate-400');
+        }
+
+        btnManualPlay.addEventListener('click', () => startPlayback(null));
+        btnManualStop.addEventListener('click', () => stopPlayback(true));
+
+        function updateStatusBadge(text, colorClass) {
+            systemStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full ${colorClass} animate-pulse"></span><span>${text}</span>`;
+        }
+
+        function highlightSlotCard(slotIndex, active) {
+            const card = document.getElementById(`slotCard${slotIndex}`);
+            if (card) {
+                if (active) {
+                    card.classList.add('ring-2', 'ring-emerald-500', 'bg-slate-800/90');
+                    card.querySelector('.status-text').textContent = '狀態: 正於此時段廣播中';
+                    card.querySelector('.status-text').classList.add('text-emerald-400');
+                } else {
+                    card.classList.remove('ring-2', 'ring-emerald-500', 'bg-slate-800/90');
+                    card.querySelector('.status-text').textContent = '狀態: 排程監聽中';
+                    card.querySelector('.status-text').classList.remove('text-emerald-400');
+                }
+            }
+        }
+
+        // Schedules Comparison Logic
+        function checkSchedules(now) {
+            if (!masterScheduleToggle.checked) {
+                if (isPlaying && currentPlayingSlot !== null) {
+                    stopPlayback();
+                }
+                nextSessionInfo.textContent = '排程總開關已關閉';
+                countdownTimer.textContent = 'PAUSED';
+                return;
+            }
+
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const currentSeconds = now.getSeconds();
+            const nowInSec = currentMinutes * 60 + currentSeconds;
+
+            let activeSlotFound = null;
+            let upcomingSessions = [];
+
+            [1, 2, 3].forEach(slot => {
+                const enabled = document.getElementById(`slot${slot}Enable`).checked;
+                const card = document.getElementById(`slotCard${slot}`);
+                const statusText = card.querySelector('.status-text');
+
+                if (!enabled) {
+                    if (currentPlayingSlot === slot) stopPlayback();
+                    statusText.textContent = '狀態: 停用';
+                    statusText.className = 'text-xs text-slate-400 status-text';
+                    return;
+                }
+
+                statusText.textContent = '狀態: 監聽中';
+                statusText.className = 'text-xs text-blue-400 status-text';
+
+                const startVal = document.getElementById(`slot${slot}Start`).value;
+                const endVal = document.getElementById(`slot${slot}End`).value;
+
+                const [sH, sM] = startVal.split(':').map(Number);
+                const [eH, eM] = endVal.split(':').map(Number);
+
+                const startSec = (sH * 60 + sM) * 60;
+                const endSec = (eH * 60 + eM) * 60;
+
+                if (nowInSec >= startSec && nowInSec < endSec) {
+                    activeSlotFound = slot;
+                } else if (startSec > nowInSec) {
+                    upcomingSessions.push({ slot, diffSec: startSec - nowInSec });
+                } else {
+                    upcomingSessions.push({ slot, diffSec: (86400 - nowInSec) + startSec });
+                }
+            });
+
+            if (activeSlotFound) {
+                if (!isPlaying || currentPlayingSlot !== activeSlotFound) {
+                    startPlayback(activeSlotFound);
+                }
+                nextSessionInfo.textContent = `時段 ${activeSlotFound} 正於廣播區間內`;
+                countdownTimer.textContent = 'PLAYING';
+            } else {
+                if (isPlaying && currentPlayingSlot !== null) {
+                    addLog(`時段 ${currentPlayingSlot} 時間到達，終止廣播`);
+                    stopPlayback(false);
+                }
+
+                if (upcomingSessions.length > 0) {
+                    upcomingSessions.sort((a, b) => a.diffSec - b.diffSec);
+                    const next = upcomingSessions[0];
+                    nextSessionInfo.textContent = `準備執行：時段 ${next.slot}`;
+                    countdownTimer.textContent = formatCountdown(next.diffSec);
+                } else {
+                    nextSessionInfo.textContent = '未開啟任何排程';
+                    countdownTimer.textContent = '--:--:--';
+                }
+            }
+        }
+
+        function formatCountdown(totalSec) {
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = totalSec % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        // Initialize Devices List
+        refreshAudioDevices();
+
+        document.getElementById('btnClearLogs').addEventListener('click', () => {
+            logContainer.innerHTML = '';
+        });
+    </script>
+</body>
+</html>
